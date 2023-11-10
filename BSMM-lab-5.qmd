@@ -1,8 +1,8 @@
 ---
 title: "BSMM-lab-5"
 subtitle: "BSMM 8740 Fall 2023"
-author: "Add your name here"
-date: "Add the date here"
+author: "Mahroosa Ibtesaam"
+date: "11-10-2023"
 format: html
 editor: visual
 self-contained: true
@@ -25,6 +25,13 @@ Today we will be using the Ames Housing Data.
 This is a data set from [De Cock](http://jse.amstat.org/v19n3/decock.pdf) (2011) has 82 fields were recorded for 2,930 properties in Ames Iowa in the US. The version in the `modeldata` package is copied from the `AmesHousing` package but does not include a few quality columns that appear to be outcomes rather than predictors.
 
 ```{r}
+library(tidyverse)
+library(magrittr)
+library(tidymodels)
+library(ggplot2)
+```
+
+```{r}
 #| eval: false
 dat <- modeldata::ames
 ```
@@ -42,13 +49,32 @@ cat(readr::read_file("http://jse.amstat.org/v19n3/decock/DataDocumentation.txt")
 
 Write and execute the code to perform summary EDA on the Ames Housing data using the package `skimr`. Show the results.
 
+```{r}
+skimr::skim(dat)
+```
+
 ### Exercise 2
 
 Write and execute code to create training and test datasets. Have the training dataset represent 75% of the total data. Name the training dataset **ames_train** and the test dataset **ames_test**
 
+```{r}
+set.seed(8740)
+data_split <- rsample::initial_split(dat,prop = 3/4)
+ames_train <- rsample::training(data_split)
+ames_test  <- rsample::testing(data_split)
+```
+
 ### Exercise 3
 
 Create a recipe based on the formula **Sale_Price \~ Longitude + Latitude + Lot_Area + Neighborhood + Year_Sold** and with the pre-processing steps specified in the description. Show the output of `broom::tidy()` with your recipes as the argument.
+
+```{r}
+norm_recipe <- 
+  recipes::recipe(Sale_Price ~ Longitude + Latitude + Lot_Area + Neighborhood + Year_Sold, data = ames_train) %>% recipes::step_log(Sale_Price) %>% recipes::step_center(all_numeric()) %>% recipes::step_scale(all_numeric()) %>% recipes::step_other(Neighborhood, other = "other") %>% recipes::step_dummy(all_nominal()) %>% recipes::prep() 
+
+broom::tidy(norm_recipe)
+
+```
 
 ### Exercise 4
 
@@ -60,17 +86,63 @@ Create three regression models using the `parsnip::` package and assign each mod
 
 Evaluate (print) each model variable to show the type of model, the method of fitting and the tuning arguments, if any.
 
+```{r}
+#base model
+lm_mod_base <- 
+  parsnip::linear_reg() %>% parsnip::set_engine("lm") 
+
+lm_mod_base_fit <- lm_mod_base %>% parsnip::fit(Sale_Price ~ Longitude + Latitude + Lot_Area + Neighborhood + Year_Sold, data = ames_train)
+
+#GLMNET model
+lm_mod_glmnet <- 
+  parsnip::linear_reg(penalty = 1, mixture = .5 ) %>% parsnip::set_engine("glmnet")
+
+lm_mod_glmnet_fit <- lm_mod_glmnet %>% parsnip::fit(Sale_Price ~ Longitude + Latitude + Lot_Area + Neighborhood + Year_Sold, data = ames_train)
+
+
+#Random Forest model
+lm_mod_rforest <- 
+  parsnip::rand_forest(trees = 200, min_n = 5) %>% parsnip::set_mode("regression")
+
+lm_mod_rforest_fit <- lm_mod_rforest %>% parsnip::set_engine("ranger") 
+
+print(lm_mod_base)
+print(lm_mod_glmnet)
+print(lm_mod_rforest)
+```
+
 ### Exercise 5
 
 Use `parsnip::translate()` on each model to see the model template for each method of fitting.
+
+```{r}
+lm_mod_base %>% parsnip::translate()
+lm_mod_glmnet %>% parsnip::translate()
+lm_mod_rforest %>% parsnip::translate()
+```
 
 ### Exercise 6
 
 Create bootstrap samples for the training dataset. You can leave the parameters set to their defaults.
 
+```{r}
+set.seed(8740)
+train_resamples <- ames_train  %>% rsample::bootstraps()
+```
+
 ### Exercise 7
 
 Create workflows with `workflowsets::workflow_set` using your recipe and models. Show the resulting datastructure, noting the number of columns, and then use `tidyr::` to unnest the *info* column and show its contents.
+
+```{r}
+all_workflows <- 
+  workflowsets::workflow_set(
+    preproc = list(base = norm_recipe),
+    models = list(base = lm_mod_base, glmnet = lm_mod_glmnet, forest = lm_mod_rforest)
+  )
+
+all_workflows %>% tidyr::unnest(info)
+```
 
 ### Exercise 8
 
@@ -79,15 +151,65 @@ Use `workflowsets::workflow_map` to map the default function (`tune::tune_grid()
 The updated variable `all_workflows` contains a nested column named **result**, and each cell of the column **result** is a tibble containing a nested column named **.metrics**. Write code to
 
 1.  un-nest the metrics in the column .metrics
+
 2.  filter out the rows for the metric rsq
+
 3.  group by wflow_id, order the .estimate column from highest to lowest, and pick out the first row of each group.
+
+    ```{r}
+    all_workflows <- all_workflows %>% 
+      workflowsets::workflow_map(
+        fn="tune_grid",
+        verbose = TRUE                # enable logging
+        , resamples = train_resamples # a parameter passed to tune::tune_grid()
+        , grid = 5                    # a parameter passed to tune::tune_grid()
+      )
+    summary_val <- all_workflows%>%tidyr::unnest(result) %>%tidyr::unnest(.metrics) %>% dplyr::filter(.metric == "rsq") %>% dplyr::group_by(wflow_id) %>% dplyr::arrange(desc(.estimate)) %>%  dplyr::slice(1)
+    ```
+
+```{r}
+summary_val
+```
 
 ### Exercise 9
 
 Run the code provided and compare to your results from exercise 8.
+
+```{r}
+workflowsets::rank_results(all_workflows, rank_metric = "rsq", select_best = TRUE)
+```
+
+Ans: Both the results show that base_forest is the best model according to rsq with excercise 8 having rsq of .706 and excercise 9 having rsq of .662 Both the results show missing values for multiple metrics like mean, std_err for model **BASE_GLMNET**
 
 ### Exercise 10
 
 Select the best model per the **rsq** metric using its id.
 
 What is the ratio of the OOB prediction errors (MSE): test/train?
+
+```{r}
+best_model_workflow <- 
+  all_workflows %>% 
+  workflowsets::extract_workflow("base_forest")
+```
+
+```{r}
+best_model_workflow
+```
+
+```{r}
+best_model_workflow <- 
+  best_model_workflow %>% 
+  tune::finalize_workflow(
+    tibble::tibble(metric = "rsq") # enter the name and value of the best-fit parameters
+  
+    ) 
+training_fit <- best_model_workflow %>% 
+  fit(data = ames_train)
+
+testing_fit <- best_model_workflow %>% 
+  fit(data = ames_test)
+
+training_fit
+testing_fit
+```
