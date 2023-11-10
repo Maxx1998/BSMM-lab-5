@@ -1,0 +1,93 @@
+---
+title: "BSMM-lab-5"
+subtitle: "BSMM 8740 Fall 2023"
+author: "Add your name here"
+date: "Add the date here"
+format: html
+editor: visual
+self-contained: true
+---
+
+::: callout-note
+## REMINDER:
+
+Be sure to edit this document (see above) to include your name (and the date)
+
+Before you wrap up the assignment, make sure all documents are updated on your GitHub repo (i.e. save, stage, commit and push).
+
+Remember -- you do **not** have to turn in an \*.html file. I will be pulling your work directly from your repository on the [course github site](https://github.com/BSMM-8740-Fall-2023).
+:::
+
+## Setup
+
+Today we will be using the Ames Housing Data.
+
+This is a data set from [De Cock](http://jse.amstat.org/v19n3/decock.pdf) (2011) has 82 fields were recorded for 2,930 properties in Ames Iowa in the US. The version in the `modeldata` package is copied from the `AmesHousing` package but does not include a few quality columns that appear to be outcomes rather than predictors.
+
+```{r}
+#| eval: false
+dat <- modeldata::ames
+```
+
+The data dictionary can be found on the internet:
+
+```{r}
+#| eval: false
+cat(readr::read_file("http://jse.amstat.org/v19n3/decock/DataDocumentation.txt"))
+```
+
+## Exercises
+
+### Exercise 1
+
+Write and execute the code to perform summary EDA on the Ames Housing data using the package `skimr`. Show the results.
+
+### Exercise 2
+
+Write and execute code to create training and test datasets. Have the training dataset represent 75% of the total data. Name the training dataset **ames_train** and the test dataset **ames_test**
+
+### Exercise 3
+
+Create a recipe based on the formula **Sale_Price \~ Longitude + Latitude + Lot_Area + Neighborhood + Year_Sold** and with the pre-processing steps specified in the description. Show the output of `broom::tidy()` with your recipes as the argument.
+
+### Exercise 4
+
+Create three regression models using the `parsnip::` package and assign each model to its own variable
+
+-   a base regression model using `lm`
+-   a regression model using `glmnet`; set the model parameters `penalty` and `mixture` for tuning
+-   a tree model using the `ranger` engine; set the model parameters `min_n` and `trees` for tuning
+
+Evaluate (print) each model variable to show the type of model, the method of fitting and the tuning arguments, if any.
+
+### Exercise 5
+
+Use `parsnip::translate()` on each model to see the model template for each method of fitting.
+
+### Exercise 6
+
+Create bootstrap samples for the training dataset. You can leave the parameters set to their defaults.
+
+### Exercise 7
+
+Create workflows with `workflowsets::workflow_set` using your recipe and models. Show the resulting datastructure, noting the number of columns, and then use `tidyr::` to unnest the *info* column and show its contents.
+
+### Exercise 8
+
+Use `workflowsets::workflow_map` to map the default function (`tune::tune_grid()` - look at the help for `workflowsets::workflow_map` ) across the workflows in the workflowset you just created and update the variable `all_workflows` with the result.
+
+The updated variable `all_workflows` contains a nested column named **result**, and each cell of the column **result** is a tibble containing a nested column named **.metrics**. Write code to
+
+1.  un-nest the metrics in the column .metrics
+2.  filter out the rows for the metric rsq
+3.  group by wflow_id, order the .estimate column from highest to lowest, and pick out the first row of each group.
+
+### Exercise 9
+
+Run the code provided and compare to your results from exercise 8.
+
+### Exercise 10
+
+Select the best model per the **rsq** metric using its id.
+
+What is the ratio of the OOB prediction errors (MSE): test/train?
